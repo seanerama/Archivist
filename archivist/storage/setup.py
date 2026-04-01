@@ -148,16 +148,23 @@ class SetupWizard:
             raise SetupError("Docker command timed out.") from e
 
     def _validate_qdrant(self) -> None:
-        """Validate the Qdrant connection."""
+        """Validate the Qdrant connection, retrying for newly started containers."""
+        import time
+
         console.print("\nValidating Qdrant connection...")
-        if self._check_qdrant_reachable():
-            console.print("[green]Connection successful![/green]")
-        else:
-            console.print(
-                f"[red]Cannot reach Qdrant at "
-                f"{self._config.qdrant.host}:{self._config.qdrant.port}[/red]"
-            )
-            console.print("Please check your configuration and try again.")
+        for attempt in range(6):
+            if self._check_qdrant_reachable():
+                console.print("[green]Connection successful![/green]")
+                return
+            if attempt < 5:
+                console.print(f"  Waiting for Qdrant to start... ({attempt + 1}/5)")
+                time.sleep(2)
+
+        console.print(
+            f"[red]Cannot reach Qdrant at "
+            f"{self._config.qdrant.host}:{self._config.qdrant.port}[/red]"
+        )
+        console.print("Please check your configuration and try again.")
 
     def _write_config(self, config_path: Path) -> None:
         """Write current config to YAML file."""
