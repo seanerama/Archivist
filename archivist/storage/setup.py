@@ -199,7 +199,7 @@ class SetupWizard:
             model = Prompt.ask("Model name", default="voyage-3.5")
             self._config.embedding.model = model
 
-            console.print("Set your API key in .env: [bold]VOYAGE_API_KEY=your-key[/bold]")
+            self._prompt_api_key("VOYAGE_API_KEY", "Voyage")
             self._config.embedding.api_key = "env:VOYAGE_API_KEY"
 
     def _setup_tagger(self) -> None:
@@ -227,8 +227,33 @@ class SetupWizard:
             model = Prompt.ask("Model", default="claude-haiku-4-5-20251001")
             self._config.tagger.model = model
 
-            console.print("Set your API key in .env: [bold]ANTHROPIC_API_KEY=your-key[/bold]")
+            self._prompt_api_key("ANTHROPIC_API_KEY", "Anthropic")
             self._config.tagger.api_key = "env:ANTHROPIC_API_KEY"
+
+    def _prompt_api_key(self, env_var: str, provider_name: str) -> None:
+        """Prompt for an API key and save it to .env."""
+        import os
+
+        # Check if already set in environment
+        existing = os.environ.get(env_var)
+        if existing:
+            masked = existing[:8] + "..." if len(existing) > 8 else "***"
+            console.print(f"  {env_var} already set ({masked})")
+            if Confirm.ask("  Keep existing key?", default=True):
+                return
+
+        key = Prompt.ask(f"  {provider_name} API key", password=True)
+        if key:
+            env_path = Path(".env")
+            # Append or update the key in .env
+            lines: list[str] = []
+            if env_path.exists():
+                lines = env_path.read_text().splitlines()
+            # Remove existing entry for this var
+            lines = [line for line in lines if not line.startswith(f"{env_var}=")]
+            lines.append(f"{env_var}={key}")
+            env_path.write_text("\n".join(lines) + "\n")
+            console.print("  [green]Saved to .env[/green]")
 
     def _write_config(self, config_path: Path) -> None:
         """Write current config to YAML file."""
