@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from archivist.chunking import RecursiveChunker
 from archivist.config import Config
@@ -65,26 +65,18 @@ class Pipeline:
         files = self._expand_paths(paths)
         console.print(f"Found {len(files)} document(s) to process.\n")
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Ingesting...", total=len(files))
-
-            for file_path in files:
-                progress.update(task, description=f"[bold]{file_path.name}[/bold]")
-                try:
-                    self._ingest_one(file_path, result, dry_run, console=console)
-                except ArchivistError as e:
-                    logger.error("Document failed", file=file_path.name, error=str(e))
-                    result.docs_failed += 1
-                    result.errors.append((file_path.name, str(e)))
-                except Exception as e:
-                    logger.error("Unexpected error", file=file_path.name, error=str(e))
-                    result.docs_failed += 1
-                    result.errors.append((file_path.name, f"Unexpected: {e}"))
-                progress.advance(task)
+        for i, file_path in enumerate(files, 1):
+            console.print(f"[bold]\\[{i}/{len(files)}] {file_path.name}[/bold]")
+            try:
+                self._ingest_one(file_path, result, dry_run, console=console)
+            except ArchivistError as e:
+                console.print(f"  [red]Error: {e}[/red]")
+                result.docs_failed += 1
+                result.errors.append((file_path.name, str(e)))
+            except Exception as e:
+                console.print(f"  [red]Unexpected error: {e}[/red]")
+                result.docs_failed += 1
+                result.errors.append((file_path.name, f"Unexpected: {e}"))
 
         # Print review queue summary
         self._review_queue.render_summary()
