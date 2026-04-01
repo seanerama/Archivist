@@ -83,10 +83,33 @@ class LoggingConfig:
 
 
 @dataclass
+class ImageConfig:
+    """Image extraction and multimodal embedding configuration."""
+
+    enabled: bool = False
+    formats: list[str] = field(default_factory=lambda: ["pdf", "epub"])
+    min_size: int = 10000  # bytes
+    embedding_model: str = "voyage-multimodal-3.5"
+    cache_dir: str = ".archivist-cache/images"
+    api_key: str | None = None
+
+
+@dataclass
+class RerankerConfig:
+    """Re-ranking configuration."""
+
+    enabled: bool = False
+    type: str = "local"  # "local" or "api"
+    model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    api_key: str | None = None
+
+
+@dataclass
 class RetrievalConfig:
     """Retrieval engine configuration."""
 
     top_k: int = 10
+    reranker: RerankerConfig = field(default_factory=RerankerConfig)
 
 
 @dataclass
@@ -100,6 +123,7 @@ class Config:
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
+    image: ImageConfig = field(default_factory=ImageConfig)
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:
@@ -183,7 +207,14 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
         config.logging = _merge_dataclass(LoggingConfig(), raw["logging"])
 
     if "retrieval" in raw and isinstance(raw["retrieval"], dict):
-        config.retrieval = _merge_dataclass(RetrievalConfig(), raw["retrieval"])
+        retrieval_data = raw["retrieval"]
+        config.retrieval = _merge_dataclass(RetrievalConfig(), retrieval_data)
+        if "reranker" in retrieval_data and isinstance(retrieval_data["reranker"], dict):
+            config.retrieval.reranker = _merge_dataclass(RerankerConfig(), retrieval_data["reranker"])
+
+    key = "image_extraction" if "image_extraction" in raw else "image"
+    if key in raw and isinstance(raw[key], dict):
+        config.image = _merge_dataclass(ImageConfig(), raw[key])
 
     return config
 

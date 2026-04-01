@@ -16,7 +16,7 @@ from archivist.extractors import get_extractor
 from archivist.log import get_logger
 from archivist.metadata import ContentScanner, FilenameParser, ReviewItem, ReviewQueue, SidecarIO
 from archivist.metadata.family_tagger import FamilyTagger
-from archivist.models import IngestResult, MetadataPayload
+from archivist.models import ChunkRole, IngestResult, MetadataPayload
 from archivist.storage import QdrantStorage
 from archivist.tagger_backends import get_tagger_backend
 from archivist.versioning import DeltaEngine, VersionIndex, VersionParser
@@ -180,6 +180,16 @@ class Pipeline:
             return
         console.print(f"  {len(chunks)} chunks ({sum(c.token_count for c in chunks):,} tokens)")
 
+        # Step 8.5: Image extraction (if enabled)
+        extracted_images = []
+        if self._config.image.enabled and raw_doc.format in self._config.image.formats:
+            from archivist.image import ImageExtractor
+
+            img_extractor = ImageExtractor(self._config.image)
+            extracted_images = img_extractor.extract_images(file_path, raw_doc)
+            if extracted_images:
+                console.print(f"  Extracted {len(extracted_images)} images")
+
         if dry_run:
             console.print("  [dim]Dry run — skipping storage[/dim]")
             result.docs_processed += 1
@@ -266,6 +276,50 @@ class Pipeline:
         # Cap removed chunks
         for chunk_id, cap_version in classification.to_cap:
             self._storage.update_version_range([chunk_id], cap_version)
+
+        # Step 11.5: Embed and upsert images
+        if extracted_images:
+            from archivist.image import MultimodalEmbedder
+
+            console.print(f"  Embedding {len(extracted_images)} images...")
+            img_embedder = MultimodalEmbedder(self._config.image)
+            img_vectors = img_embedder.encode_images(extracted_images)
+
+            now_img = datetime.now(UTC).isoformat()
+            img_payloads = []
+            for img in extracted_images:
+                text = img.caption or f"Image from page {img.page_number} of {img.source_file}"
+                img_payloads.append(MetadataPayload(
+                    doc_title=tag_result.doc_title,
+                    doc_type=tag_result.doc_type,
+                    family_slug=tag_result.family_slug,
+                    source_file=file_path.name,
+                    format="image",
+                    version=version,
+                    version_tuple=version_tuple,
+                    version_range_min=version_tuple,
+                    version_range_max=None,
+                    chunk_role=ChunkRole.BASE,
+                    base_chunk_id=None,
+                    created_date=created_date,
+                    ingested_date=now_img,
+                    metadata_complete=metadata_complete,
+                    chunk_index=img.image_index,
+                    page_number=img.page_number,
+                    heading_path=None,
+                    timestamp_start=None,
+                    timestamp_end=None,
+                    text=text,
+                    token_count=0,
+                    image_width=img.width,
+                    image_height=img.height,
+                    image_index=img.image_index,
+                ))
+
+            console.print(f"  Storing {len(img_payloads)} image embeddings in Qdrant...")
+            self._storage.upsert_chunks(img_payloads, img_vectors)
+            result.chunks_created += len(img_payloads)
+            console.print("  [green]Images stored![/green]")
 
         # Step 12: Update version index
         if version:

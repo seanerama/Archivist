@@ -22,7 +22,9 @@ class Retriever:
         self._storage = QdrantStorage(config)
         self._embedding = get_embedding_backend(config)
         self._version_parser = VersionParser()
-        self._reranker: Any = None  # Plugged in by Stage 3
+
+        from archivist.retrieval.reranker import get_reranker
+        self._reranker = get_reranker(config)
 
     def _ensure_connected(self) -> None:
         """Connect to storage if not already connected."""

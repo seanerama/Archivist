@@ -54,7 +54,8 @@ class TestSearchCommand:
     def test_search_with_results(self, mock_config: MagicMock, mock_log: MagicMock, mock_dotenv: MagicMock) -> None:
         mock_config.return_value = MagicMock()
         with patch("archivist.retrieval.retriever.QdrantStorage") as mock_storage_cls, \
-             patch("archivist.retrieval.retriever.get_embedding_backend") as mock_embed:
+             patch("archivist.retrieval.retriever.get_embedding_backend") as mock_embed, \
+             patch("archivist.retrieval.reranker.get_reranker", return_value=None):
             import numpy as np
             mock_backend = MagicMock()
             mock_backend.dimension = 3

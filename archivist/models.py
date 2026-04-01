@@ -107,6 +107,11 @@ class MetadataPayload:
     text: str
     token_count: int
 
+    # Image fields (optional, only for image chunks)
+    image_width: int | None = None
+    image_height: int | None = None
+    image_index: int | None = None
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dict suitable for Qdrant payload."""
         return {
@@ -131,6 +136,9 @@ class MetadataPayload:
             "timestamp_end": self.timestamp_end,
             "text": self.text,
             "token_count": self.token_count,
+            "image_width": self.image_width,
+            "image_height": self.image_height,
+            "image_index": self.image_index,
         }
 
 
