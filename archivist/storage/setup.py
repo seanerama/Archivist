@@ -295,5 +295,17 @@ class SetupWizard:
         if self._config.qdrant.api_key:
             config_dict["qdrant"]["api_key"] = "env:QDRANT_API_KEY"
 
+        # Add API-specific fields
+        if self._config.embedding.type == "api":
+            config_dict["embedding_backend"]["provider"] = self._config.embedding.provider
+            config_dict["embedding_backend"]["model"] = self._config.embedding.model
+            config_dict["embedding_backend"]["api_key"] = "env:VOYAGE_API_KEY"
+
+        if self._config.tagger.type == "api":
+            config_dict["tagger_backend"]["api_key"] = "env:ANTHROPIC_API_KEY"
+
+        if self._config.tagger.type == "local":
+            config_dict["tagger_backend"]["ollama_host"] = self._config.tagger.ollama_host
+
         with open(config_path, "w") as f:
             yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)

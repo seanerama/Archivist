@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
 from archivist.chunking import RecursiveChunker
 from archivist.config import Config
 from archivist.embedding import get_embedding_backend
@@ -51,25 +54,37 @@ class Pipeline:
         """
         result = IngestResult()
 
+        console = Console()
+
         # Connect to storage
         if not dry_run:
+            console.print("Connecting to Qdrant...")
             self._storage.connect(self._embedding.dimension)
 
         # Expand directories
         files = self._expand_paths(paths)
-        logger.info("Starting ingestion", file_count=len(files), dry_run=dry_run)
+        console.print(f"Found {len(files)} document(s) to process.\n")
 
-        for file_path in files:
-            try:
-                self._ingest_one(file_path, result, dry_run)
-            except ArchivistError as e:
-                logger.error("Document failed", file=file_path.name, error=str(e))
-                result.docs_failed += 1
-                result.errors.append((file_path.name, str(e)))
-            except Exception as e:
-                logger.error("Unexpected error", file=file_path.name, error=str(e))
-                result.docs_failed += 1
-                result.errors.append((file_path.name, f"Unexpected: {e}"))
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Ingesting...", total=len(files))
+
+            for file_path in files:
+                progress.update(task, description=f"Processing {file_path.name}...")
+                try:
+                    self._ingest_one(file_path, result, dry_run)
+                except ArchivistError as e:
+                    logger.error("Document failed", file=file_path.name, error=str(e))
+                    result.docs_failed += 1
+                    result.errors.append((file_path.name, str(e)))
+                except Exception as e:
+                    logger.error("Unexpected error", file=file_path.name, error=str(e))
+                    result.docs_failed += 1
+                    result.errors.append((file_path.name, f"Unexpected: {e}"))
+                progress.advance(task)
 
         # Print review queue summary
         self._review_queue.render_summary()
