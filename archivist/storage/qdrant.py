@@ -43,6 +43,7 @@ class QdrantStorage:
             if self._config.api_key:
                 kwargs["api_key"] = self._config.api_key
 
+            kwargs["check_compatibility"] = False
             self._client = QdrantClient(**kwargs)
 
             # Create collection if it doesn't exist

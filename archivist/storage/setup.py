@@ -83,15 +83,20 @@ class SetupWizard:
 
     def _check_qdrant_reachable(self) -> bool:
         """Check if Qdrant is reachable at the configured address."""
+        import warnings
+
         try:
             from qdrant_client import QdrantClient
 
-            client = QdrantClient(
-                host=self._config.qdrant.host,
-                port=self._config.qdrant.port,
-                timeout=5,
-            )
-            client.get_collections()
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                client = QdrantClient(
+                    host=self._config.qdrant.host,
+                    port=self._config.qdrant.port,
+                    timeout=5,
+                    check_compatibility=False,
+                )
+                client.get_collections()
             return True
         except Exception:
             return False
