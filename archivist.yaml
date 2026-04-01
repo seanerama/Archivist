@@ -1,0 +1,51 @@
+# Archivist Configuration
+# See docs for all options: https://github.com/your-org/archivist
+
+qdrant:
+  host: localhost
+  port: 6333
+  collection_name: archivist
+  distance_metric: Cosine
+  # api_key: env:QDRANT_API_KEY  # uncomment for Qdrant Cloud
+
+embedding_backend:
+  type: local                     # "local" or "api"
+  # ── Local (sentence-transformers) ──
+  model_name: BAAI/bge-m3
+  precision: fp16                 # fp32, fp16, q8
+  device: auto                    # auto, cuda, cpu, mps
+  batch_size: 32
+  # ── API (Voyage) ──
+  # type: api
+  # provider: voyage
+  # model: voyage-3.5
+  # api_key: env:VOYAGE_API_KEY
+
+tagger_backend:
+  type: local                     # "local" or "api"
+  # ── Local (Ollama) ──
+  provider: ollama
+  model: qwen3:0.6b
+  ollama_host: http://localhost:11434
+  # ── API (Anthropic) ──
+  # type: api
+  # provider: anthropic
+  # model: claude-haiku-4-5-20251001
+  # api_key: env:ANTHROPIC_API_KEY
+  # ── Tagger behaviour ──
+  auto_accept_tags: false
+  auto_accept_threshold: 0.90
+  new_family_always_review: true
+
+pipeline:
+  chunk_size: 512
+  chunk_overlap_pct: 10
+  dry_run: false
+  overwrite_existing: false
+
+whisper:
+  model: medium                   # tiny, base, small, medium, large-v3
+  cache_dir: .archivist-cache
+
+logging:
+  level: INFO                     # DEBUG, INFO, WARNING, ERROR
