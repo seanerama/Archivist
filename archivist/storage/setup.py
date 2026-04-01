@@ -41,7 +41,13 @@ class SetupWizard:
         # Step 2: Validate connection
         self._validate_qdrant()
 
-        # Step 3: Write config
+        # Step 3: Embedding backend
+        self._setup_embedding()
+
+        # Step 4: Tagger backend
+        self._setup_tagger()
+
+        # Step 5: Write config
         self._write_config(config_path)
 
         console.print(f"\n[green]Configuration written to {config_path}[/green]")
@@ -165,6 +171,64 @@ class SetupWizard:
             f"{self._config.qdrant.host}:{self._config.qdrant.port}[/red]"
         )
         console.print("Please check your configuration and try again.")
+
+    def _setup_embedding(self) -> None:
+        """Configure the embedding backend."""
+        console.print("\n[bold]Step 2: Embedding Backend[/bold]\n")
+
+        choice = Prompt.ask(
+            "Embedding backend",
+            choices=["local", "api"],
+            default="local",
+        )
+        self._config.embedding.type = choice
+
+        if choice == "local":
+            model = Prompt.ask("HuggingFace model", default="BAAI/bge-m3")
+            self._config.embedding.model_name = model
+
+            precision = Prompt.ask("Precision", choices=["fp32", "fp16", "q8"], default="fp16")
+            self._config.embedding.precision = precision
+
+            device = Prompt.ask("Device", choices=["auto", "cuda", "cpu", "mps"], default="auto")
+            self._config.embedding.device = device
+        else:
+            provider = Prompt.ask("API provider", choices=["voyage"], default="voyage")
+            self._config.embedding.provider = provider
+
+            model = Prompt.ask("Model name", default="voyage-3.5")
+            self._config.embedding.model = model
+
+            console.print("Set your API key in .env: [bold]VOYAGE_API_KEY=your-key[/bold]")
+            self._config.embedding.api_key = "env:VOYAGE_API_KEY"
+
+    def _setup_tagger(self) -> None:
+        """Configure the tagger backend."""
+        console.print("\n[bold]Step 3: Document Tagger Backend[/bold]\n")
+
+        choice = Prompt.ask(
+            "Tagger backend",
+            choices=["local", "api"],
+            default="local",
+        )
+        self._config.tagger.type = choice
+
+        if choice == "local":
+            self._config.tagger.provider = "ollama"
+            model = Prompt.ask("Ollama model", default="qwen3:0.6b")
+            self._config.tagger.model = model
+
+            host = Prompt.ask("Ollama host", default="http://localhost:11434")
+            self._config.tagger.ollama_host = host
+
+            console.print(f"Make sure the model is pulled: [bold]ollama pull {model}[/bold]")
+        else:
+            self._config.tagger.provider = "anthropic"
+            model = Prompt.ask("Model", default="claude-haiku-4-5-20251001")
+            self._config.tagger.model = model
+
+            console.print("Set your API key in .env: [bold]ANTHROPIC_API_KEY=your-key[/bold]")
+            self._config.tagger.api_key = "env:ANTHROPIC_API_KEY"
 
     def _write_config(self, config_path: Path) -> None:
         """Write current config to YAML file."""
