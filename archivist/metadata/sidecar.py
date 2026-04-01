@@ -14,8 +14,13 @@ class SidecarIO:
 
     @staticmethod
     def sidecar_path(source_path: Path) -> Path:
-        """Get the .tag sidecar path for a source file."""
-        return source_path.with_suffix(source_path.suffix + ".tag")
+        """Get the .tag sidecar path for a source file.
+
+        The sidecar is always written in the same directory as the source file,
+        using only the filename (no directory traversal).
+        """
+        resolved = source_path.resolve()
+        return resolved.with_suffix(resolved.suffix + ".tag")
 
     @staticmethod
     def read(source_path: Path) -> TagResult | None:
@@ -32,6 +37,8 @@ class SidecarIO:
             return None
 
         data = json.loads(tag_path.read_text())
+        if not isinstance(data, dict) or "family_slug" not in data:
+            return None
         return TagResult(
             family_slug=data["family_slug"],
             doc_title=data.get("doc_title", ""),

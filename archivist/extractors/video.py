@@ -103,6 +103,8 @@ class VideoExtractor(BaseExtractor):
         """Load transcript from cache."""
         try:
             cache_data = json.loads(cache_path.read_text())
+            if not isinstance(cache_data, dict) or "text" not in cache_data:
+                raise ExtractionError(f"Invalid cache file for '{path.name}': missing required fields")
             segments = cache_data.get("segments", [])
 
             return RawDocument(
