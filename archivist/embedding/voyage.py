@@ -14,8 +14,9 @@ from archivist.log import get_logger
 
 logger = get_logger("embedding.voyage")
 
-MAX_RETRIES = 3
-BASE_DELAY = 1.0
+MAX_RETRIES = 6
+BASE_DELAY = 2.0
+BATCH_SIZE = 8  # Voyage free tier has low RPM limits
 
 
 class VoyageEmbeddingBackend(EmbeddingBackend):
@@ -48,25 +49,35 @@ class VoyageEmbeddingBackend(EmbeddingBackend):
             raise EmbeddingError(f"Failed to initialize Voyage client: {e}") from e
 
     def encode(self, texts: list[str]) -> np.ndarray:
-        """Encode texts using Voyage API with retry on rate limits."""
+        """Encode texts using Voyage API with batching and retry on rate limits."""
+        all_embeddings: list[list[float]] = []
+
+        # Process in small batches to avoid rate limits
+        for i in range(0, len(texts), BATCH_SIZE):
+            batch = texts[i : i + BATCH_SIZE]
+            batch_result = self._encode_batch(batch)
+            all_embeddings.extend(batch_result)
+
+        result = np.array(all_embeddings, dtype=np.float32)
+        if self._dim is None:
+            self._dim = result.shape[1]
+        return result
+
+    def _encode_batch(self, texts: list[str]) -> list[list[float]]:
+        """Encode a single batch with retry/backoff."""
         client = self._get_client()
         model = self._config.model or "voyage-3.5"
 
         for attempt in range(MAX_RETRIES):
             try:
                 result = client.embed(texts, model=model, input_type="document")
-                embeddings = np.array(result.embeddings, dtype=np.float32)
-
-                if self._dim is None:
-                    self._dim = embeddings.shape[1]
-
-                return embeddings
+                return result.embeddings
 
             except Exception as e:
                 error_str = str(e).lower()
                 if "429" in error_str or "rate" in error_str:
                     delay = BASE_DELAY * (2**attempt)
-                    logger.warning("Rate limited, retrying", attempt=attempt + 1, delay=delay)
+                    logger.warning("Rate limited, retrying", attempt=attempt + 1, delay=delay, batch_size=len(texts))
                     time.sleep(delay)
                     continue
                 raise EmbeddingError(f"Voyage API error: {e}") from e
