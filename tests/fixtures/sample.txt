@@ -1,0 +1,4 @@
+This is a plain text document for testing.
+It has multiple lines.
+Version: 2.0
+Last updated: 2024-01-15
