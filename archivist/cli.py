@@ -136,6 +136,131 @@ def review(
 
 
 @app.command()
+def search(
+    query: str = typer.Argument(help="Search query"),  # noqa: B008
+    version: str | None = typer.Option(None, "--version", "-V", help="Filter to a specific version"),
+    family: str | None = typer.Option(None, "--family", "-f", help="Filter to a document family"),
+    doc_type: str | None = typer.Option(None, "--doc-type", "-t", help="Filter to a document type"),
+    top_k: int = typer.Option(5, "--top-k", "-k", help="Number of results"),
+    config_path: str | None = typer.Option(None, "--config", "-c"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Search the document corpus."""
+    config = _load_config(config_path, verbose)
+
+    from archivist.retrieval import Retriever
+
+    retriever = Retriever(config)
+    results = retriever.search(query, version=version, family=family, doc_type=doc_type, top_k=top_k)
+
+    if not results:
+        console.print("[yellow]No results found.[/yellow]")
+        raise typer.Exit(code=0)
+
+    for i, r in enumerate(results, 1):
+        console.print(f"\n[bold cyan]{i}. {r.doc_title or r.source_file}[/bold cyan]")
+        meta_parts = []
+        if r.family_slug:
+            meta_parts.append(f"family={r.family_slug}")
+        if r.version:
+            meta_parts.append(f"v{r.version}")
+        if r.doc_type:
+            meta_parts.append(r.doc_type)
+        if r.page_number is not None:
+            meta_parts.append(f"p.{r.page_number}")
+        meta_parts.append(f"score={r.score:.3f}")
+        console.print(f"   [dim]{' | '.join(meta_parts)}[/dim]")
+        if r.heading_path:
+            console.print(f"   [dim]{r.heading_path}[/dim]")
+        # Show first ~200 chars of text
+        excerpt = r.text[:200].replace("\n", " ")
+        if len(r.text) > 200:
+            excerpt += "..."
+        console.print(f"   {excerpt}")
+
+
+@app.command()
+def families(
+    config_path: str | None = typer.Option(None, "--config", "-c"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """List all document families and their versions."""
+    config = _load_config(config_path, verbose)
+
+    from archivist.retrieval import Retriever
+
+    retriever = Retriever(config)
+    fams = retriever.list_families()
+
+    if not fams:
+        console.print("[yellow]No families found. Ingest some documents first.[/yellow]")
+        raise typer.Exit(code=0)
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Family")
+    table.add_column("Doc Types")
+    table.add_column("Versions")
+    table.add_column("Latest")
+    table.add_column("Chunks", justify="right")
+
+    for f in fams:
+        table.add_row(
+            f.family_slug,
+            ", ".join(f.doc_types),
+            ", ".join(f.versions) if f.versions else "—",
+            f.latest_version or "—",
+            str(f.total_chunks),
+        )
+
+    console.print(table)
+
+
+@app.command()
+def diff(
+    family: str = typer.Argument(help="Document family slug"),  # noqa: B008
+    from_version: str = typer.Argument(help="Older version"),  # noqa: B008
+    to_version: str = typer.Argument(help="Newer version"),  # noqa: B008
+    config_path: str | None = typer.Option(None, "--config", "-c"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Show what changed between two versions of a document family."""
+    config = _load_config(config_path, verbose)
+
+    from archivist.retrieval import Retriever
+
+    retriever = Retriever(config)
+    diffs = retriever.version_diff(family, from_version, to_version)
+
+    if not diffs:
+        console.print("[yellow]No differences found.[/yellow]")
+        raise typer.Exit(code=0)
+
+    added = [d for d in diffs if d.change_type == "added"]
+    modified = [d for d in diffs if d.change_type == "modified"]
+    removed = [d for d in diffs if d.change_type == "removed"]
+
+    if removed:
+        console.print(f"\n[bold red]Removed ({len(removed)} chunks)[/bold red]")
+        for d in removed:
+            excerpt = d.chunk_text[:150].replace("\n", " ")
+            console.print(f"  [red]- chunk {d.chunk_index}[/red]: {excerpt}...")
+
+    if modified:
+        console.print(f"\n[bold yellow]Modified ({len(modified)} chunks)[/bold yellow]")
+        for d in modified:
+            excerpt = d.chunk_text[:150].replace("\n", " ")
+            console.print(f"  [yellow]~ chunk {d.chunk_index}[/yellow]: {excerpt}...")
+
+    if added:
+        console.print(f"\n[bold green]Added ({len(added)} chunks)[/bold green]")
+        for d in added:
+            excerpt = d.chunk_text[:150].replace("\n", " ")
+            console.print(f"  [green]+ chunk {d.chunk_index}[/green]: {excerpt}...")
+
+    console.print(f"\n[bold]Summary[/bold]: {len(added)} added, {len(modified)} modified, {len(removed)} removed")
+
+
+@app.command()
 def setup(
     config_path: str | None = typer.Option(None, "--config", "-c"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),

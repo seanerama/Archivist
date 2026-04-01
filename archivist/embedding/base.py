@@ -21,6 +21,20 @@ class EmbeddingBackend(ABC):
             numpy array of shape (len(texts), dimension).
         """
 
+    def encode_query(self, text: str) -> np.ndarray:
+        """Encode a query string into an embedding vector.
+
+        Some backends (e.g. Voyage) use a different input_type for queries
+        vs documents. Override this method to customize query encoding.
+
+        Args:
+            text: The query string to embed.
+
+        Returns:
+            numpy array of shape (1, dimension).
+        """
+        return self.encode([text])
+
     @property
     @abstractmethod
     def dimension(self) -> int:

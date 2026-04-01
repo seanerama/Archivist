@@ -83,6 +83,13 @@ class LoggingConfig:
 
 
 @dataclass
+class RetrievalConfig:
+    """Retrieval engine configuration."""
+
+    top_k: int = 10
+
+
+@dataclass
 class Config:
     """Root configuration for Archivist."""
 
@@ -92,6 +99,7 @@ class Config:
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:
@@ -173,6 +181,9 @@ def _dict_to_config(raw: dict[str, Any]) -> Config:
 
     if "logging" in raw and isinstance(raw["logging"], dict):
         config.logging = _merge_dataclass(LoggingConfig(), raw["logging"])
+
+    if "retrieval" in raw and isinstance(raw["retrieval"], dict):
+        config.retrieval = _merge_dataclass(RetrievalConfig(), raw["retrieval"])
 
     return config
 

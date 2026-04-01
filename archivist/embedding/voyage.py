@@ -84,6 +84,29 @@ class VoyageEmbeddingBackend(EmbeddingBackend):
 
         raise EmbeddingError(f"Voyage API failed after {MAX_RETRIES} retries")
 
+    def encode_query(self, text: str) -> np.ndarray:
+        """Encode a query using Voyage with input_type='query'."""
+        client = self._get_client()
+        model = self._config.model or "voyage-3.5"
+
+        for attempt in range(MAX_RETRIES):
+            try:
+                result = client.embed([text], model=model, input_type="query")
+                arr = np.array(result.embeddings, dtype=np.float32)
+                if self._dim is None:
+                    self._dim = arr.shape[1]
+                return arr
+            except Exception as e:
+                error_str = str(e).lower()
+                if "429" in error_str or "rate" in error_str:
+                    delay = BASE_DELAY * (2**attempt)
+                    logger.warning("Rate limited, retrying", attempt=attempt + 1, delay=delay)
+                    time.sleep(delay)
+                    continue
+                raise EmbeddingError(f"Voyage API error: {e}") from e
+
+        raise EmbeddingError(f"Voyage API failed after {MAX_RETRIES} retries")
+
     @property
     def dimension(self) -> int:
         """Dimension of Voyage embeddings."""
