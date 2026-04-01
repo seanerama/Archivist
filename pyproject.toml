@@ -23,6 +23,7 @@ dependencies = [
     "anthropic>=0.30",
     "semver>=3.0",
     "numpy>=1.26",
+    "mcp[cli]>=1.0",
 ]
 
 [project.scripts]
@@ -58,4 +59,6 @@ dev = [
     "mypy>=1.20.0",
     "pytest>=9.0.2",
     "ruff>=0.15.8",
+    "anyio[trio]>=4.0",
+    "pytest-anyio>=0.0.0",
 ]

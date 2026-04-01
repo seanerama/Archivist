@@ -273,3 +273,18 @@ def setup(
     wizard = SetupWizard(config)
     output_path = Path(config_path) if config_path else Path("archivist.yaml")
     wizard.run(config_path=output_path)
+
+
+@app.command()
+def mcp(
+    config_path: str | None = typer.Option(None, "--config", "-c", help="Path to archivist.yaml"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+) -> None:
+    """Start the MCP server for Claude Code integration."""
+    import asyncio
+
+    _load_config(config_path, verbose)
+
+    from archivist.mcp.server import run_server
+
+    asyncio.run(run_server())
