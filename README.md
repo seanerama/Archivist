@@ -119,14 +119,30 @@ export ARCHIVIST_QDRANT_HOST=remote-server
 export ARCHIVIST_LOGGING_LEVEL=DEBUG
 ```
 
-API keys are referenced in the config via `env:` prefix:
+API keys are stored in a `.env` file (auto-loaded, already in `.gitignore`):
+
+```bash
+# .env
+VOYAGE_API_KEY=your-voyage-key
+ANTHROPIC_API_KEY=your-anthropic-key
+QDRANT_API_KEY=your-qdrant-cloud-key   # only if using Qdrant Cloud
+```
+
+Then reference them in `archivist.yaml` with the `env:` prefix:
 
 ```yaml
 embedding_backend:
   type: api
   provider: voyage
   api_key: env:VOYAGE_API_KEY
+
+tagger_backend:
+  type: api
+  provider: anthropic
+  api_key: env:ANTHROPIC_API_KEY
 ```
+
+No API keys are needed if using local backends (Ollama + sentence-transformers).
 
 ## Supported Formats
 
