@@ -107,8 +107,17 @@ class TestQdrantStorageOperations:
         mock_info.status = "green"
         mock_client.get_collection.return_value = mock_info
 
+        mock_point = MagicMock()
+        mock_point.payload = {
+            "source_file": "test.pdf", "family_slug": "test", "doc_title": "Test",
+            "doc_type": "other", "version": "1.0", "chunk_role": "base",
+        }
+        mock_client.scroll.return_value = ([mock_point], None)
+
         stats = connected_storage.collection_stats()
         assert stats["total_chunks"] == 100
+        assert len(stats["documents"]) == 1
+        assert stats["documents"][0]["source_file"] == "test.pdf"
 
     def test_update_version_range(self, connected_storage: QdrantStorage, mock_client: MagicMock) -> None:
         connected_storage.update_version_range(["id1", "id2"], (1, 26, 0))

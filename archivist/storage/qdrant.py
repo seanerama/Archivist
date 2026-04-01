@@ -274,14 +274,46 @@ class QdrantStorage:
             raise StorageError(f"Failed to delete partial ingestion: {e}") from e
 
     def collection_stats(self) -> dict[str, Any]:
-        """Get corpus statistics."""
+        """Get corpus statistics including per-document breakdown."""
         self._ensure_connected()
         try:
             info = self._client.get_collection(self._collection_name)
+
+            # Scroll all points to gather per-document stats
+            documents: dict[str, dict[str, Any]] = {}
+            offset = None
+            while True:
+                results, offset = self._client.scroll(
+                    collection_name=self._collection_name,
+                    limit=1000,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                for point in results:
+                    payload = point.payload or {}
+                    if payload.get("chunk_role") == ChunkRole.VERSION_INDEX.value:
+                        continue
+                    source = payload.get("source_file", "unknown")
+                    if source not in documents:
+                        documents[source] = {
+                            "source_file": source,
+                            "family_slug": payload.get("family_slug", ""),
+                            "doc_title": payload.get("doc_title", ""),
+                            "doc_type": payload.get("doc_type", ""),
+                            "version": payload.get("version"),
+                            "chunks": 0,
+                        }
+                    documents[source]["chunks"] += 1
+
+                if offset is None:
+                    break
+
             return {
                 "total_chunks": info.points_count,
                 "collection": self._collection_name,
                 "status": str(info.status),
+                "documents": list(documents.values()),
             }
         except Exception as e:
             raise StorageError(f"Failed to get collection stats: {e}") from e

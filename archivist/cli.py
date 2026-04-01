@@ -87,12 +87,38 @@ def status(
         storage.connect(vector_dimension=1)  # dimension doesn't matter for stats
         stats = storage.collection_stats()
 
-        console.print("[bold]Archivist Corpus Status[/bold]")
-        table = Table(show_header=False)
-        table.add_row("Collection", stats.get("collection", "unknown"))
-        table.add_row("Total chunks", str(stats.get("total_chunks", 0)))
-        table.add_row("Status", stats.get("status", "unknown"))
-        console.print(table)
+        docs = stats.get("documents", [])
+        families = {d["family_slug"] for d in docs if d.get("family_slug")}
+
+        console.print("[bold]Archivist Corpus Status[/bold]\n")
+        summary = Table(show_header=False)
+        summary.add_row("Collection", stats.get("collection", "unknown"))
+        summary.add_row("Total chunks", str(stats.get("total_chunks", 0)))
+        summary.add_row("Documents", str(len(docs)))
+        summary.add_row("Families", str(len(families)))
+        summary.add_row("Status", stats.get("status", "unknown"))
+        console.print(summary)
+
+        if docs:
+            console.print("\n[bold]Documents[/bold]\n")
+            doc_table = Table(show_header=True, header_style="bold")
+            doc_table.add_column("File")
+            doc_table.add_column("Family")
+            doc_table.add_column("Title")
+            doc_table.add_column("Type")
+            doc_table.add_column("Version")
+            doc_table.add_column("Chunks", justify="right")
+
+            for doc in sorted(docs, key=lambda d: d.get("family_slug", "")):
+                doc_table.add_row(
+                    doc["source_file"],
+                    doc.get("family_slug", ""),
+                    doc.get("doc_title", "")[:40],
+                    doc.get("doc_type", ""),
+                    doc.get("version") or "—",
+                    str(doc["chunks"]),
+                )
+            console.print(doc_table)
     except Exception as e:
         console.print(f"[red]Cannot connect to Qdrant: {e}[/red]")
         raise typer.Exit(code=1) from None
