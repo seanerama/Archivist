@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from archivist.chunking import RecursiveChunker
 from archivist.config import Config
@@ -73,9 +73,9 @@ class Pipeline:
             task = progress.add_task("Ingesting...", total=len(files))
 
             for file_path in files:
-                progress.update(task, description=f"Processing {file_path.name}...")
+                progress.update(task, description=f"[bold]{file_path.name}[/bold]")
                 try:
-                    self._ingest_one(file_path, result, dry_run)
+                    self._ingest_one(file_path, result, dry_run, console=console)
                 except ArchivistError as e:
                     logger.error("Document failed", file=file_path.name, error=str(e))
                     result.docs_failed += 1
@@ -91,9 +91,14 @@ class Pipeline:
 
         return result
 
-    def _ingest_one(self, file_path: Path, result: IngestResult, dry_run: bool) -> None:
+    def _ingest_one(
+        self, file_path: Path, result: IngestResult, dry_run: bool, console: Console | None = None
+    ) -> None:
         """Ingest a single document."""
-        logger.info("Processing", file=file_path.name)
+        if console is None:
+            console = Console()
+        name = file_path.name
+        logger.info("Processing", file=name)
 
         # Step 1: Check sidecar for existing tag
         existing_tag = SidecarIO.read(file_path)
@@ -109,8 +114,10 @@ class Pipeline:
                 return
 
         # Step 3: Extract
+        console.print(f"  Extracting {name}...")
         extractor = get_extractor(file_path, config=self._config)
         raw_doc = extractor.extract(file_path)
+        console.print(f"  Extracted {len(raw_doc.text):,} chars ({raw_doc.format})")
 
         # Step 4: Filename metadata
         filename_meta = self._filename_parser.parse(file_path.name)
@@ -121,8 +128,9 @@ class Pipeline:
         # Step 6: Family tagging
         if existing_tag:
             tag_result = existing_tag
-            logger.info("Using existing sidecar tag", family=tag_result.family_slug)
+            console.print(f"  Family: {tag_result.family_slug} (from sidecar)")
         else:
+            console.print("  Classifying document...")
             tag_result, auto_accepted = self._family_tagger.tag(
                 file_path, raw_doc.text[:3000], [],
                 filename_hint=filename_meta.get("doc_type"),
@@ -139,6 +147,10 @@ class Pipeline:
                     reason="tagger flagged for review",
                 ))
 
+            console.print(
+                f"  Family: {tag_result.family_slug} "
+                f"(confidence: {tag_result.confidence:.0%}{', auto-accepted' if auto_accepted else ', needs review'})"
+            )
             # Write sidecar
             SidecarIO.write(file_path, tag_result, tagger_model=self._config.tagger.model)
 
@@ -169,13 +181,15 @@ class Pipeline:
             ))
 
         # Step 8: Chunk
+        console.print("  Chunking...")
         chunks = self._chunker.chunk(raw_doc)
         if not chunks:
-            logger.warning("No chunks produced", file=file_path.name)
+            console.print("  [yellow]No chunks produced[/yellow]")
             return
+        console.print(f"  {len(chunks)} chunks ({sum(c.token_count for c in chunks):,} tokens)")
 
         if dry_run:
-            logger.info("Dry run complete", file=file_path.name, chunks=len(chunks))
+            console.print("  [dim]Dry run — skipping storage[/dim]")
             result.docs_processed += 1
             return
 
@@ -190,7 +204,27 @@ class Pipeline:
         # Step 10: Embed new/delta chunks
         if classification.to_upsert:
             texts = [c.text for c in classification.to_upsert]
-            vectors = self._embedding.encode(texts)
+            console.print(f"  Embedding {len(texts)} chunks...")
+
+            import numpy as np
+
+            embed_batch_size = 32
+            all_vectors: list[np.ndarray] = []
+            with Progress(
+                TextColumn("  "),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeElapsedColumn(),
+                console=console,
+            ) as embed_progress:
+                embed_task = embed_progress.add_task("Embedding", total=len(texts))
+                for i in range(0, len(texts), embed_batch_size):
+                    batch = texts[i : i + embed_batch_size]
+                    batch_vectors = self._embedding.encode(batch)
+                    all_vectors.append(batch_vectors)
+                    embed_progress.advance(embed_task, len(batch))
+
+            vectors = np.vstack(all_vectors)
 
             # Build payloads
             now = datetime.now(UTC).isoformat()
@@ -226,8 +260,10 @@ class Pipeline:
                 ))
 
             # Step 11: Upsert to Qdrant
+            console.print(f"  Storing {len(payloads)} chunks in Qdrant...")
             self._storage.upsert_chunks(payloads, vectors)
             result.chunks_created += len(payloads)
+            console.print("  [green]Done![/green]")
 
         # Update version ranges for unchanged chunks
         if classification.to_update_range:
