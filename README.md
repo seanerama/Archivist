@@ -10,13 +10,26 @@ Search your corpus with version-aware filtering, expose it to Claude Code via MC
 
 ## Why Archivist?
 
-Standard RAG pipelines treat every document as a flat text blob. They can't answer:
+Standard RAG pipelines flatten everything into a bag of text chunks. They have no concept of *when* something was written, *which version* it applies to, or *what changed*. This creates real problems:
 
-- "What changed between v1.24 and v1.26?"
-- "Is this answer still valid for my version?"
-- "Which documents cover Kubernetes 1.29 specifically?"
+- **Stale answers** -- You ask about nginx configuration and get an answer from a doc that was superseded two releases ago. The pipeline can't tell you it's outdated because it doesn't know versions exist.
+- **Redundant storage** -- Ingest v1.22, v1.24, and v1.26 of the same guide and you store three full copies. 90% of the content is identical across versions.
+- **No change tracking** -- A teammate asks "what changed in the latest release?" and the pipeline has nothing to offer. The diff between versions was never captured.
+- **Version conflicts** -- Chunks from different versions of the same doc sit side by side in the same vector space. A single query can return a mix of v1.22 and v1.26 answers with no way to tell them apart.
 
-Archivist solves this by making **version metadata a first-class citizen**. It uses delta storage so only actual changes between versions are stored, and every chunk carries version range information for precise retrieval.
+### How Archivist is different
+
+Archivist makes **version metadata a first-class citizen**. Every chunk carries a version range, a document family, and a role (base or delta). This changes what's possible:
+
+| Standard RAG | Archivist |
+|-------------|-----------|
+| "Here are chunks that match your query" | "Here are chunks valid for **your version**" |
+| Stores full copies of every version | **Delta storage** -- only actual changes between versions are stored |
+| No concept of document versions | Filter search by version, family, or doc type |
+| Can't show what changed | `archivist diff nginx 1.22 1.24` shows exactly what was added, modified, or removed |
+| Chunks are anonymous text | Every chunk knows its source file, family, version range, page number, and heading path |
+
+The result: your AI assistant gives answers that are **correct for the version you're actually running**, storage scales with *changes* rather than *copies*, and you can trace every answer back to a specific document at a specific version.
 
 ## Features
 
