@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="banner.jpg" alt="Archivist — Version-Aware Document Intelligence" width="100%">
+</p>
+
 # Archivist
 
 Version-aware document ingestion and retrieval for technical documentation. Archivist takes your PDFs, EPUBs, markdown files, plaintext, and video/audio recordings and stores them in a Qdrant vector database with full version tracking. Every chunk knows its version, whether it's base content or a delta, and when it was written.
