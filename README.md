@@ -1,6 +1,8 @@
 # Archivist
 
-Version-aware document ingestion for technical documentation. Archivist takes your PDFs, EPUBs, markdown files, plaintext, and video/audio recordings and stores them in a Qdrant vector database with full version tracking. Every chunk knows its version, whether it's base content or a delta, and when it was written.
+Version-aware document ingestion and retrieval for technical documentation. Archivist takes your PDFs, EPUBs, markdown files, plaintext, and video/audio recordings and stores them in a Qdrant vector database with full version tracking. Every chunk knows its version, whether it's base content or a delta, and when it was written.
+
+Search your corpus with version-aware filtering, expose it to Claude Code via MCP, and optionally extract and embed images from documents.
 
 ## Why Archivist?
 
@@ -16,6 +18,10 @@ Archivist solves this by making **version metadata a first-class citizen**. It u
 
 - **Multi-format extraction** -- PDF, EPUB, Markdown, plaintext, video/audio (via Whisper)
 - **Version-aware storage** -- Delta model stores only what changed between versions
+- **Version-aware search** -- Query the corpus with version filtering; only get chunks valid for your version
+- **MCP server** -- Expose search to Claude Code (and other MCP clients) via stdio
+- **Re-ranking** -- Optional cross-encoder or Voyage API re-ranking for better retrieval precision
+- **Image extraction** -- Extract and embed images from PDFs/EPUBs using Voyage multimodal (opt-in)
 - **LLM document classification** -- Automatically groups documents into families using local (Ollama) or API (Claude Haiku) models
 - **Metadata review queue** -- Flags documents with missing version/date info for manual review
 - **Hardware-agnostic** -- Local or API backends for both embeddings and tagging
@@ -75,6 +81,48 @@ archivist status
 archivist review
 ```
 
+### Search
+
+```bash
+# Search the corpus
+archivist search "How do I configure TLS?"
+
+# Filter by version, family, or document type
+archivist search "TLS setup" --version 1.24 --family nginx
+
+# List all document families
+archivist families
+
+# Show what changed between versions
+archivist diff nginx 1.22 1.24
+```
+
+### MCP Server (Claude Code integration)
+
+Start the MCP server for use with Claude Code:
+
+```bash
+archivist mcp
+```
+
+Or add to your Claude Code MCP config (`.mcp.json` in your project root):
+
+```json
+{
+  "mcpServers": {
+    "archivist": {
+      "command": "archivist",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+This exposes three tools:
+- `archivist_search` -- Search with optional version/family/doc_type filters
+- `archivist_list_families` -- List all document families and versions
+- `archivist_version_diff` -- Show changes between two versions
+
 ## Configuration
 
 Archivist reads from `archivist.yaml` in the current directory. The setup wizard creates this file, or you can write it manually:
@@ -105,6 +153,19 @@ pipeline:
 whisper:
   model: medium                   # tiny, base, small, medium, large-v3
   cache_dir: .archivist-cache
+
+retrieval:
+  top_k: 10
+  reranker:
+    enabled: false               # enable for better search precision
+    type: local                  # "local" or "api"
+    model: cross-encoder/ms-marco-MiniLM-L-6-v2
+
+image_extraction:
+  enabled: false                 # opt-in; requires Voyage API
+  formats: [pdf, epub]
+  min_size: 10000                # skip images smaller than 10KB
+  embedding_model: voyage-multimodal-3.5
 
 logging:
   level: INFO
@@ -183,11 +244,21 @@ from archivist.config import Config
 from archivist.pipeline import Pipeline
 
 config = Config.load()
+
+# Ingest documents
 pipeline = Pipeline(config)
 result = pipeline.ingest([Path("./docs")])
-
 print(f"Processed: {result.docs_processed}")
 print(f"Chunks created: {result.chunks_created}")
+
+# Search the corpus
+from archivist.retrieval import Retriever
+
+retriever = Retriever(config)
+results = retriever.search("TLS configuration", version="1.24", family="nginx")
+for r in results:
+    print(f"{r.doc_title} (v{r.version}, score={r.score:.3f})")
+    print(f"  {r.text[:100]}...")
 ```
 
 ## Development
@@ -212,7 +283,7 @@ uv run mypy archivist/
 archivist/
 ├── config.py              # Configuration with YAML + env var support
 ├── pipeline.py            # Ingestion orchestrator
-├── cli.py                 # Typer CLI
+├── cli.py                 # Typer CLI (ingest, search, mcp, families, diff, status, setup)
 ├── models.py              # Shared data models
 ├── exceptions.py          # Error hierarchy
 ├── extractors/            # PDF, EPUB, MD, TXT, video extractors
@@ -221,7 +292,10 @@ archivist/
 ├── versioning/            # Version parser, delta engine, version index
 ├── embedding/             # Local (sentence-transformers) + API (Voyage) backends
 ├── tagger_backends/       # Local (Ollama) + API (Anthropic) backends
-└── storage/               # Qdrant client + setup wizard
+├── storage/               # Qdrant client + setup wizard
+├── retrieval/             # Search engine with version filtering + re-ranking
+├── mcp/                   # MCP server for Claude Code integration
+└── image/                 # Image extraction + multimodal embedding (opt-in)
 ```
 
 ## License
